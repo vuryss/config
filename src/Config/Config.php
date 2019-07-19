@@ -108,11 +108,7 @@ class Config implements ConfigInterface
         $data = $this->config;
 
         foreach ($key as $subKey) {
-            if (empty($subKey)) {
-                return false;
-            }
-
-            if (!isset($data[$subKey])) {
+            if (empty($subKey) || !isset($data[$subKey])) {
                 return false;
             }
 
@@ -140,11 +136,7 @@ class Config implements ConfigInterface
         $data = $this->config;
 
         foreach ($key as $subKey) {
-            if (empty($subKey)) {
-                return $default;
-            }
-
-            if (!isset($data[$subKey])) {
+            if (empty($subKey) || !isset($data[$subKey])) {
                 return $default;
             }
 
@@ -173,6 +165,19 @@ class Config implements ConfigInterface
             return true;
         }
 
+        return $this->setNested($key, $value);
+    }
+
+    /**
+     * Sets nested value.
+     *
+     * @param string $key   Cache key under which the data is stored in the config.
+     * @param mixed  $value Value to be set under the given configuration key.
+     *
+     * @return bool
+     */
+    private function setNested(string $key, $value)
+    {
         $key  = explode('.', $key);
         $data = &$this->config;
 
@@ -212,11 +217,23 @@ class Config implements ConfigInterface
         $this->files[] = $file;
 
         if ($this->checkFilesForUpdates) {
-            $mtime = filemtime($file);
+            $this->updateLastConfigUpdateTime($file);
+        }
+    }
 
-            if ($mtime > $this->lastConfigFileUpdateTime) {
-                $this->lastConfigFileUpdateTime = $mtime;
-            }
+    /**
+     * Updates the last config update time, which will be used to see if there are any changes to the files.
+     *
+     * @param string $file File to check for last updates.
+     *
+     * @return void
+     */
+    private function updateLastConfigUpdateTime(string $file)
+    {
+        $mtime = filemtime($file);
+
+        if ($mtime > $this->lastConfigFileUpdateTime) {
+            $this->lastConfigFileUpdateTime = $mtime;
         }
     }
 
