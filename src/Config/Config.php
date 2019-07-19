@@ -1,21 +1,21 @@
 <?php
 
+/** @noinspection PhpComposerExtensionStubsInspection */
+
 declare(strict_types=1);
 
 namespace Vuryss\Config;
 
 use Psr\SimpleCache\CacheInterface;
 
+/**
+ * Class Config
+ *
+ * Manages file-based configuration with PSR-16 caching capabilities.
+ */
 class Config implements ConfigInterface
 {
-    const FORMAT_YAML = 'yaml';
-
-    /**
-     * Format of the configuration file
-     *
-     * @var string
-     */
-    private $fileFormat = 'yaml';
+    const CACHE_KEY = 'vuryss:config';
 
     /**
      * Configuration files.
@@ -39,14 +39,38 @@ class Config implements ConfigInterface
     private $config = [];
 
     /**
+     * Whether to check if the config files have been modified since last time the cache has been populated.
+     * If the files have been modified, they will be read and parsed again to get the changes. Cache will be updated.
+     *
+     * @var bool
+     */
+    private $checkFilesForUpdates = true;
+
+    /**
+     * Last time any of the configuration files were updated.
+     * This will be used when checking for config changes during development.
+     *
+     * @see $this->checkFilesForUpdates
+     *
+     * @var int
+     */
+    private $lastConfigFileUpdateTime = 0;
+
+    /**
+     * @var string
+     */
+    private $filesChecksum = '';
+
+    /**
      * Config constructor.
      *
      * @throws Exception
      *
-     * @param string|string[]     $files File or array of configuration files to use.
-     * @param CacheInterface|null $cache PSR-16 compliant cache adapter to use.
+     * @param string|string[]     $files                File or array of configuration files to use.
+     * @param CacheInterface|null $cache                PSR-16 compliant cache adapter to use.
+     * @param bool                $checkFilesForUpdates Check config files for updates before serving cached values.
      */
-    public function __construct($files, CacheInterface $cache = null)
+    public function __construct($files, CacheInterface $cache = null, bool $checkFilesForUpdates = true)
     {
         if (!is_array($files) && !is_string($files)) {
             throw new Exception('You should provide a configuration file or array of configuration files.');
@@ -56,9 +80,13 @@ class Config implements ConfigInterface
             $this->appendConfigurationFile($file);
         }
 
+        $this->filesChecksum = md5(implode(',', $this->files));
+
         if ($cache) {
             $this->cache = $cache;
         }
+
+        $this->checkFilesForUpdates = $checkFilesForUpdates;
 
         $this->initialize();
     }
@@ -68,11 +96,30 @@ class Config implements ConfigInterface
      *
      * @param string $key Cache key under which the data is stored in the config.
      *
-     * @return boolean
+     * @return bool
      */
     public function has(string $key): bool
     {
-        // TODO: Implement has() method.
+        if (strpos($key, '.') === false) {
+            return isset($this->config[$key]);
+        }
+
+        $key  = explode('.', $key);
+        $data = $this->config;
+
+        foreach ($key as $subKey) {
+            if (empty($subKey)) {
+                return false;
+            }
+
+            if (!isset($data[$subKey])) {
+                return false;
+            }
+
+            $data = $data[$subKey];
+        }
+
+        return true;
     }
 
     /**
@@ -85,13 +132,34 @@ class Config implements ConfigInterface
      */
     public function get(string $key, $default = null)
     {
-        // TODO: Implement get() method.
+        if (strpos($key, '.') === false) {
+            return isset($this->config[$key]) ? $this->config[$key] : $default;
+        }
+
+        $key  = explode('.', $key);
+        $data = $this->config;
+
+        foreach ($key as $subKey) {
+            if (empty($subKey)) {
+                return $default;
+            }
+
+            if (!isset($data[$subKey])) {
+                return $default;
+            }
+
+            $data = $data[$subKey];
+        }
+
+        return $data;
     }
 
     /**
      * Sets or overwrites the current configuration value behind a given key.
      * Generally we should not be using this unless it's highly necessary.
      * All configuration should be set in the configuration files and not changed at runtime.
+     *
+     * NOTE: The change will not be stored in the configuration files! It will be only for the current script execution.
      *
      * @param string $key   Cache key under which the data is stored in the config.
      * @param mixed  $value Value to be set under the given configuration key.
@@ -100,13 +168,36 @@ class Config implements ConfigInterface
      */
     public function set(string $key, $value): bool
     {
-        // TODO: Implement set() method.
+        if (strpos($key, '.') === false) {
+            $this->config[$key] = $value;
+            return true;
+        }
+
+        $key  = explode('.', $key);
+        $data = &$this->config;
+
+        foreach ($key as $subKey) {
+            if (empty($subKey)) {
+                return false;
+            }
+
+            if (!isset($data[$subKey])) {
+                $data[$subKey] = [];
+            }
+
+            $data = &$data[$subKey];
+        }
+
+        $data = $value;
+        return true;
     }
 
     /**
      * @throws Exception
      *
-     * @param string $file
+     * @param string $file File which will be parsed and it's configuration contents merged to existing configuration.
+     *
+     * @return void
      */
     private function appendConfigurationFile($file)
     {
@@ -119,12 +210,81 @@ class Config implements ConfigInterface
         }
 
         $this->files[] = $file;
+
+        if ($this->checkFilesForUpdates) {
+            $mtime = filemtime($file);
+
+            if ($mtime > $this->lastConfigFileUpdateTime) {
+                $this->lastConfigFileUpdateTime = $mtime;
+            }
+        }
     }
 
+    /**
+     * @noinspection PhpDocMissingThrowsInspection
+     *
+     * @return void
+     */
     private function initialize()
+    {
+        if ($this->cache) {
+            /** @noinspection PhpUnhandledExceptionInspection */
+            $cachedConfig = $this->cache->get(self::CACHE_KEY . ':cache-config');
+
+            if (!$cachedConfig) {
+                $this->parseAndCacheConfigurationFiles();
+                return;
+            }
+
+            if ($this->checkFilesForUpdates) {
+                /** @noinspection PhpUnhandledExceptionInspection */
+                [self::CACHE_KEY . ':cache-time' => $cachedTime, self::CACHE_KEY . ':cache-files' => $cachedFiles]
+                    = $this->cache->getMultiple(
+                        [self::CACHE_KEY . ':cache-time', self::CACHE_KEY . ':cache-files'],
+                        null
+                    );
+
+                if (!$cachedTime || !$cachedFiles) {
+                    $this->parseAndCacheConfigurationFiles();
+                    return;
+                }
+
+                if ($this->lastConfigFileUpdateTime > $cachedTime || $this->filesChecksum !== $cachedFiles) {
+                    $this->parseAndCacheConfigurationFiles();
+                    return;
+                }
+            }
+
+            $this->config = $cachedConfig;
+            return;
+        }
+
+        $this->parseAndCacheConfigurationFiles();
+    }
+
+    /**
+     * Parses the configuration files, filling up the internal config.
+     * Then caches the data, if the cache is given.
+     *
+     * @noinspection PhpDocMissingThrowsInspection
+     *
+     * @return void
+     */
+    private function parseAndCacheConfigurationFiles()
     {
         foreach ($this->files as $file) {
             $this->config = array_merge($this->config, yaml_parse_file($file));
+        }
+
+        if ($this->cache) {
+            /** @noinspection PhpUnhandledExceptionInspection */
+            $this->cache->setMultiple(
+                [
+                    self::CACHE_KEY . ':cache-time'   => time(),
+                    self::CACHE_KEY . ':cache-files'  => $this->filesChecksum,
+                    self::CACHE_KEY . ':cache-config' => $this->config,
+                ]
+            );
         }
     }
 }

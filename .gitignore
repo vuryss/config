@@ -1,2 +1,5 @@
 /.idea
 /vendor
+/examples
+/tests/coverage
+/tests/clover.xml

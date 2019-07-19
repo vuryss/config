@@ -1,0 +1,27 @@
+key1: value1
+key3:
+  subkey1:
+    final-key-1:
+      - array
+      - with
+      - values
+
+random:
+  - percent
+  - true
+  - false
+  - -1706740747.9068222
+  - apart
+  -
+    -
+      no: false
+      balance: -1218619809
+      construction: table
+      suddenly: 140847179.21748352
+      kept: 1785699919
+      energy: true
+    - base
+    - consider
+    - true
+    - true
+    - 1845027402

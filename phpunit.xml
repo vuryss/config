@@ -1,0 +1,20 @@
+<phpunit
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/6.3/phpunit.xsd"
+        bootstrap="tests/bootstrap.php"
+        cacheResult="false">
+    <testsuite name="all">
+        <directory suffix=".php">tests/Config</directory>
+    </testsuite>
+
+    <filter>
+        <whitelist processUncoveredFilesFromWhitelist="true">
+            <directory suffix=".php">src/Config</directory>
+        </whitelist>
+    </filter>
+
+    <logging>
+        <log type="coverage-html" target="tests/coverage"/>
+        <log type="coverage-clover" target="tests/clover.xml"/>
+    </logging>
+</phpunit>

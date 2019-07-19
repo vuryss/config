@@ -16,7 +16,7 @@ interface ConfigInterface
      *
      * @param string $key Cache key under which the data is stored in the config.
      *
-     * @return boolean
+     * @return bool
      */
     public function has(string $key): bool;
 
@@ -34,6 +34,8 @@ interface ConfigInterface
      * Sets or overwrites the current configuration value behind a given key.
      * Generally we should not be using this unless it's highly necessary.
      * All configuration should be set in the configuration files and not changed at runtime.
+     *
+     * NOTE: The change will not be stored in the configuration files! It will be only for the current script execution.
      *
      * @param string $key   Cache key under which the data is stored in the config.
      * @param mixed  $value Value to be set under the given configuration key.
